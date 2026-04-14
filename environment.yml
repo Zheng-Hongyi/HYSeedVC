@@ -1,0 +1,12 @@
+# Conda 环境（M 芯片）：在项目根目录执行
+#   conda env create -f environment.yml
+#   conda activate seed-vc
+# 若 pip 阶段较慢，可改用「仅 venv + requirements-macos-arm64.txt」（见 run_voice_conversion.sh 内说明）。
+name: seed-vc
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+    - -r requirements-macos-arm64.txt
