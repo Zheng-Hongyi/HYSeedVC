@@ -1,16 +1,9 @@
 #!/usr/bin/env bash
-# 在 Seed-VC 项目根目录执行：把「源朗读」换成「参考音频」的音色。
-#
-# 推理后端：本脚本使用 inference.py（V1），不是 inference_v2.py。
-# - V1：DiT + Whisper，可选 F0 条件（44k SVC 权重）、--inference-cfg-rate、--f0-scale、半音移调等；
-#   适合歌唱/需跟源音频旋律与音高走势的转换。
-# - V2：AR+CFM（Hubert/ASTRAL 内容编码），--intelligibility-cfg-rate / --similarity-cfg-rate、
-#   --convert-style（口音/情绪）、匿名化模式；README 标为更抑制源说话人特征，但 CLI 无 F0/SVC 开关。
-# 当前参数含 --f0-condition True，故选用 V1；若只做口语音色转换且更看重 V2 特性，可改用 inference_v2.py
-# 并去掉 F0 相关参数（见 README「V2 model」一节）。
+# 在 Seed-VC 项目根目录执行：V2 管线（inference_v2.py），口语音色/口音转换，无 F0/SVC 参数。
+# 调用方式与 run_voice_conversion.sh 相同，仅推理入口与参数集不同。
 # 用法：
-#   ./run_voice_conversion.sh
-#   ./run_voice_conversion.sh /path/to/source.mp3 /path/to/reference.mp3 ./output_dir
+#   ./run_voice_conversion_v2.sh
+#   ./run_voice_conversion_v2.sh /path/to/source.mp3 /path/to/reference.mp3 ./output_dir
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
@@ -29,7 +22,7 @@ fi
 
 SOURCE_MP3="${1:-/Users/tal/Desktop/Workbench/BigClassCloud/Code/Others/data/output1.mp3}"
 TARGET_MP3="${2:-/Users/tal/Desktop/Workbench/BigClassCloud/Code/Others/data/train/myAudio/output1.mp3}"
-OUT_DIR="${3:-$ROOT/output_vc_run}"
+OUT_DIR="${3:-$ROOT/output_vc_run_v2}"
 
 WORK="$ROOT/_work"
 mkdir -p "$WORK" "$OUT_DIR"
@@ -41,25 +34,16 @@ echo "输出目录: $OUT_DIR"
 ffmpeg -y -i "$SOURCE_MP3" -ac 1 -ar 22050 "$WORK/source.wav"
 ffmpeg -y -i "$TARGET_MP3" -ac 1 -ar 22050 "$WORK/target.wav"
 
-# 首次运行会从 Hugging Face 下载权重到 ./checkpoints/hf_cache
 export HF_HUB_CACHE="${HF_HUB_CACHE:-$ROOT/checkpoints/hf_cache}"
 mkdir -p "$HF_HUB_CACHE"
 
-# Apple Silicon 上 MPS + fp16 易触发崩溃时：改用下面两行之一
-# export SEED_VC_FORCE_CPU=1
-# FP16_EXTRA=(--fp16 True)
-FP16_EXTRA=(--fp16 False)
+# V2 脚本内部默认使用 float16；无需 --fp16。若需加速可研究 inference_v2.py 的 --compile（CUDA/Triton）。
 
-# inference F0 相关（勿插在反斜杠续行中间，否则会打断续行并报 command not found）：
-# --f0-condition True：44k F0 模型；False 为默认 DiT 非 F0。
-# --f0-scale：仅 F0 模式下有声段 F0 乘数（如 0.75 略降调，1.0 不变）。
-
-# 中断（Ctrl+C）/ 关终端 / SIGTERM 时结束 inference 子进程，避免 Python+MPS 占着 Metal 显存导致下次运行卡顿。
-# 若仍卡：活动监视器结束 python，或 pkill -f "inference.py|inference_v2.py"（按本机路径调整）。
+# 中断时结束子进程，避免占着 GPU/MPS。
 INF_PID=""
 _cleanup_infer_child() {
   if [[ -n "${INF_PID:-}" ]] && kill -0 "$INF_PID" 2>/dev/null; then
-    echo "正在终止 inference 子进程（释放 GPU/MPS）…" >&2
+    echo "正在终止 inference_v2 子进程（释放 GPU/MPS）…" >&2
     kill -TERM "$INF_PID" 2>/dev/null || true
     local _i=0
     while kill -0 "$INF_PID" 2>/dev/null && [[ $_i -lt 25 ]]; do
@@ -76,16 +60,19 @@ _on_infer_signal() {
 }
 trap _on_infer_signal INT TERM HUP
 
-"$PY" inference.py \
+"$PY" inference_v2.py \
   --source "$WORK/source.wav" \
   --target "$WORK/target.wav" \
   --output "$OUT_DIR" \
   --diffusion-steps 30 \
   --length-adjust 1.0 \
-  --inference-cfg-rate 0.7 \
-  --f0-condition True \
-  --f0-scale 0.75 \
-  "${FP16_EXTRA[@]}" &
+  --intelligibility-cfg-rate 0.7 \
+  --similarity-cfg-rate 0.7 \
+  --convert-style False \
+  --anonymization-only False \
+  --top-p 0.9 \
+  --temperature 1.0 \
+  --repetition-penalty 1.0 &
 INF_PID=$!
 
 wait_ec=0
