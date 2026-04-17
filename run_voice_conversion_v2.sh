@@ -60,6 +60,7 @@ _on_infer_signal() {
 }
 trap _on_infer_signal INT TERM HUP
 
+# 要口音/情绪转换，把脚本里的 --convert-style False 改成 True 即可
 "$PY" inference_v2.py \
   --source "$WORK/source.wav" \
   --target "$WORK/target.wav" \
@@ -68,7 +69,7 @@ trap _on_infer_signal INT TERM HUP
   --length-adjust 1.0 \
   --intelligibility-cfg-rate 0.7 \
   --similarity-cfg-rate 0.7 \
-  --convert-style False \
+  --convert-style True \
   --anonymization-only False \
   --top-p 0.9 \
   --temperature 1.0 \
