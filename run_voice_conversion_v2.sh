@@ -65,10 +65,10 @@ trap _on_infer_signal INT TERM HUP
   --source "$WORK/source.wav" \
   --target "$WORK/target.wav" \
   --output "$OUT_DIR" \
-  --diffusion-steps 30 \
+  --diffusion-steps 50 \
   --length-adjust 1.0 \
-  --intelligibility-cfg-rate 0.7 \
-  --similarity-cfg-rate 0.7 \
+  --intelligibility-cfg-rate 0.6 \
+  --similarity-cfg-rate 0.8 \
   --convert-style True \
   --anonymization-only False \
   --top-p 0.9 \
